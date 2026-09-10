@@ -3,28 +3,16 @@ import time
 
 import cv2
 
+import overlay
 import trackers
 
-WIN = "tracker"
-
-
-def draw(frame, ok, box, mask, fps, name):
-    if mask is not None:
-        green = frame.copy()
-        green[mask] = (0, 200, 0)
-        cv2.addWeighted(green, 0.4, frame, 0.6, 0, frame)
-    if box is not None:
-        x, y, w, h = box
-        cv2.rectangle(frame, (x, y), (x + w, y + h),
-                      (0, 200, 0) if ok else (0, 0, 255), 2)
-    label = f"{name} | {fps:.0f} fps | {'tracking' if ok else 'lost'}"
-    cv2.putText(frame, label, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
-                (255, 255, 255), 2, cv2.LINE_AA)
+WIN = "track-anything-live"
+KEYS = {ord("1"): "sam2", ord("2"): "mosse"}
 
 
 def pick_box(frame):
     box = cv2.selectROI(WIN, frame, showCrosshair=False)
-    return box if box[2] > 0 and box[3] > 0 else None
+    return tuple(int(v) for v in box) if box[2] > 0 and box[3] > 0 else None
 
 
 def main():
@@ -43,44 +31,73 @@ def main():
     box = pick_box(frame)
     if box is None:
         return
-    tk = trackers.create(args.tracker)
+
+    name = args.tracker
+    tk = trackers.create(name)
     tk.init(frame, box)
+    last_box = box
+    trail = overlay.Trail()
 
     writer = None
     if args.record:
-        fps_out = cap.get(cv2.CAP_PROP_FPS)
-        fps_out = fps_out if 1 < fps_out < 120 else 20.0
+        src_fps = cap.get(cv2.CAP_PROP_FPS)
+        out_fps = src_fps if 1 < src_fps < 120 else 20.0
         h, w = frame.shape[:2]
         writer = cv2.VideoWriter(args.record, cv2.VideoWriter_fourcc(*"mp4v"),
-                                 fps_out, (w, h))
+                                 out_fps, (w, h))
 
-    fps, last = 0.0, time.time()
+    fps = fps_avg = 0.0
+    prev = time.time()
+    frame_no = 0
+    paused = False
+
     while True:
-        ok, frame = cap.read()
-        if not ok:
-            break
-        tracked, box, mask = tk.update(frame)
+        if not paused:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            frame_no += 1
 
-        now = time.time()
-        dt = now - last
-        last = now
-        if dt > 0:
-            inst = 1 / dt
-            fps = inst if fps == 0 else 0.9 * fps + 0.1 * inst
+            tracked, box, mask = tk.update(frame)
+            if box is not None:
+                last_box = box
+            if tracked and box is not None:
+                trail.add(box)
 
-        draw(frame, tracked, box, mask, fps, args.tracker)
-        if writer is not None:
-            writer.write(frame)
+            now = time.time()
+            fps = 1.0 / (now - prev) if now > prev else fps
+            fps_avg = fps if fps_avg == 0 else 0.9 * fps_avg + 0.1 * fps
+            prev = now
+
+            if mask is not None:
+                overlay.draw_mask(frame, mask)
+            trail.draw(frame)
+            if box is not None:
+                overlay.draw_box(frame, box, tracked)
+            overlay.draw_hud(frame, name, fps, fps_avg, tracked, frame_no)
+
+            if writer is not None:
+                writer.write(frame)
+
         cv2.imshow(WIN, frame)
-
         key = cv2.waitKey(1) & 0xFF
+
         if key in (ord("q"), 27):
             break
-        if key == ord("r"):
+        elif key == ord(" "):
+            paused = not paused
+        elif key == ord("r"):
             new_box = pick_box(frame)
             if new_box is not None:
-                tk = trackers.create(args.tracker)
+                last_box = new_box
+                tk = trackers.create(name)
                 tk.init(frame, new_box)
+                trail.clear()
+        elif key in KEYS and KEYS[key] != name:
+            name = KEYS[key]
+            tk = trackers.create(name)
+            tk.init(frame, last_box)
+            trail.clear()
 
     cap.release()
     if writer is not None:

@@ -31,13 +31,18 @@ python main.py --source clip.mp4    # run on a video file
 python main.py --record out.mp4     # also write the annotated video
 ```
 
-When the window opens, drag a rectangle over the object and press Enter.
-Press `r` to pick a different object, `q` to quit.
+When the window opens, drag a rectangle over the object and press Enter. The
+overlay shows the tracker name, FPS, whether the target is still held, and the
+frame number, plus the path the object has taken.
+
+Keys: `1` / `2` switch tracker on the fly, `r` re-select, `space` pause,
+`q` quit.
 
 ## How it works
 
 `main.py` is the capture loop: read a frame, ask the tracker for the object's
-new position, draw it, show the frame. The trackers are in `trackers.py`.
+new position, draw the box / mask / trail / HUD (`overlay.py`), show the frame.
+The trackers are in `trackers.py`.
 
 **SAM 2** (`sam2`) is Meta's Segment Anything 2, the small `sam2.1_t` checkpoint,
 loaded through Ultralytics. I use it as a tracker by prompting it with a box:
@@ -66,4 +71,4 @@ pytest
 ```
 
 Runs MOSSE on a small synthetic clip and checks it keeps up with the target,
-plus a couple of unit tests for the mask-to-box helper.
+plus unit tests for the mask-to-box and trail helpers.

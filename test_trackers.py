@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+import overlay
 import trackers
 
 
@@ -53,3 +54,11 @@ def test_mask_box_empty():
 def test_bad_name():
     with pytest.raises(ValueError):
         trackers.create("orb")
+
+
+def test_trail_keeps_recent_centres():
+    trail = overlay.Trail(length=3)
+    for i in range(5):
+        trail.add((i * 10, 0, 10, 10))
+    assert len(trail.points) == 3
+    assert trail.points[-1] == (45, 5)
