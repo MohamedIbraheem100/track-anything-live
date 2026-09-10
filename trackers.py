@@ -43,8 +43,11 @@ class Sam2Tracker:
 
     def _segment(self, frame, box):
         x, y, w, h = box
-        res = self.model(frame, bboxes=[[x, y, x + w, y + h]], imgsz=self.imgsz,
-                         device=self.device, quantize="fp16", verbose=False)
+        kw = dict(bboxes=[[x, y, x + w, y + h]], imgsz=self.imgsz,
+                  device=self.device, verbose=False)
+        if self.device != "cpu":
+            kw["quantize"] = "fp16"  # half precision, ~2x faster on the GPU
+        res = self.model(frame, **kw)
         masks = res[0].masks
         if masks is None or len(masks) == 0:
             return None
